@@ -8,6 +8,15 @@ import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import connectDB from "./config/db.js";
 import paypalRoutes from "./routes/paypalRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import projectRoutes from "./routes/projectRoutes.js";
+import milestoneRoutes from "./routes/milestoneRoutes.js";
+import submissionRoutes from "./routes/submissionRoutes.js";
+import approvalRoutes from "./routes/approvalRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 import {
   verifyWebhookSignature,
   handleWebhookEvent,
@@ -151,10 +160,19 @@ app.get("/api/health", (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PayPal Routes
+// Application Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.use("/api/paypal", paypalRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
+app.use("/api/milestones", milestoneRoutes);
+app.use("/api/submissions", submissionRoutes);
+app.use("/api/approvals", approvalRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/users", userRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 404 Handler
