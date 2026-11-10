@@ -274,3 +274,4 @@ export const getFreelancers = async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch freelancers" });
   }
 };
+

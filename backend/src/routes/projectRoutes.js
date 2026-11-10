@@ -27,3 +27,4 @@ router.post("/:projectId/accept", acceptAgreement);
 router.post("/:projectId/reject", rejectAgreement);
 
 export default router;
+

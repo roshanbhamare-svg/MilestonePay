@@ -19,3 +19,4 @@ router.put("/:milestoneId", authorize("client"), updateMilestone);
 router.patch("/:milestoneId/status", updateMilestoneStatus);
 
 export default router;
+

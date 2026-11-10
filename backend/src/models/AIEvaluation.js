@@ -48,3 +48,4 @@ const aiEvaluationSchema = new mongoose.Schema(
 const AIEvaluation = mongoose.model("AIEvaluation", aiEvaluationSchema);
 
 export default AIEvaluation;
+

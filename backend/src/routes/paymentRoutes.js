@@ -19,3 +19,4 @@ router.get("/projects/:projectId", getProjectPayments);
 router.post("/projects/:projectId/void", authorize("client"), voidProjectPayment);
 
 export default router;
+
