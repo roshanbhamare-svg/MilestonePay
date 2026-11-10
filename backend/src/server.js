@@ -16,6 +16,7 @@ import approvalRoutes from "./routes/approvalRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 import {
   verifyWebhookSignature,
   handleWebhookEvent,
@@ -171,6 +172,7 @@ app.use("/api/approvals", approvalRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/users", userRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 404 Handler
