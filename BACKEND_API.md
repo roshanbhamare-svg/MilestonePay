@@ -279,3 +279,4 @@ Mark a notification as read.
 
 #### `PATCH /api/notifications/mark-all-read` *(Protected)*
 Mark all user notifications as read.
+

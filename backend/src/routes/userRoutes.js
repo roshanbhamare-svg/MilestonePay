@@ -10,3 +10,4 @@ router.get("/freelancers", getFreelancers);
 router.get("/:userId", getUserById);
 
 export default router;
+
