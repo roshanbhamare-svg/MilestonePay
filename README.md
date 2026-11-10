@@ -69,7 +69,9 @@ MilestonePay/
 ├── README.md
 ├── PAYPAL_SETUP.md                       # PayPal configuration guide
 ├── PAYPAL_API.md                         # API endpoint documentation
-└── PAYPAL_FLOW.md                        # Complete payment flow documentation
+├── PAYPAL_FLOW.md                        # Complete payment flow documentation
+├── BACKEND_API.md                        # Member B complete API & schemas documentation
+└── MilestonePay_MemberB_API.postman_collection.json
 ```
 
 ---
@@ -178,7 +180,7 @@ curl -X POST http://localhost:5001/api/paypal/capture/AUTH_ID_HERE \
 | `GET` | `/api/paypal/authorization/:authorizationId` | Get authorization details |
 | `POST` | `/api/paypal/webhook` | PayPal webhook receiver |
 
-See [PAYPAL_API.md](./PAYPAL_API.md) for full documentation.
+See [PAYPAL_API.md](./PAYPAL_API.md) for PayPal endpoints and [BACKEND_API.md](./BACKEND_API.md) for complete application & business APIs.
 
 ---
 
@@ -187,7 +189,7 @@ See [PAYPAL_API.md](./PAYPAL_API.md) for full documentation.
 | Member | Responsibility |
 |--------|---------------|
 | **A** | Project setup, PayPal integration, webhooks ✅ |
-| **B** | MongoDB schemas, authentication, business APIs |
+| **B** | MongoDB schemas, authentication, business APIs ✅ |
 | **C** | Complete frontend UI and dashboards |
 | **D** | LangGraph.js AI agents for milestone generation and evaluation |
 

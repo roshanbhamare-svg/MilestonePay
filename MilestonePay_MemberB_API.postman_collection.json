@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "MilestonePay - Member B API Collection",
+    "description": "Complete Postman collection for MilestonePay Member B: Auth, Projects, Milestones, Submissions, Approvals, Payments, AI, and Notifications.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5001/api" },
+    { "key": "clientToken", "value": "" },
+    { "key": "freelancerToken", "value": "" },
+    { "key": "projectId", "value": "" },
+    { "key": "milestoneId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register Client",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Client\",\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"client\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Client",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"client@milestonepay.com\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Freelancer",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"freelancer@milestonepay.com\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/auth/profile"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/projects",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"AI Chatbot Integration\",\n  \"description\": \"Build support bot with Gemini LLM\",\n  \"budget\": 300,\n  \"deadline\": \"2026-12-31T00:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get User Projects",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/projects"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Milestones",
+      "item": [
+        {
+          "name": "Get Project Milestones",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/milestones/project/{{projectId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Payments",
+      "item": [
+        {
+          "name": "Authorize Project Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/payments/projects/{{projectId}}/authorize"
+          }
+        },
+        {
+          "name": "Capture Milestone Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+            "url": "{{baseUrl}}/payments/milestones/{{milestoneId}}/capture"
+          }
+        }
+      ]
+    }
+  ]
+}
