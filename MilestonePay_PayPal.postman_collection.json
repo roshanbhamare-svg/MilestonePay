@@ -1,0 +1,149 @@
+{
+  "info": {
+    "_postman_id": "milestonepay-paypal-collection",
+    "name": "MilestonePay – PayPal API",
+    "description": "PayPal integration endpoints for MilestonePay.\n\nSet the {{baseUrl}} variable to http://localhost:5001 for local development.\n\n⚠️ Do not include real credentials in this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "description": "Set this after Create Order response"
+    },
+    {
+      "key": "authorizationId",
+      "value": "",
+      "description": "Set this after Authorize Order response"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "health"]
+        },
+        "description": "Returns backend status and MongoDB connection state."
+      }
+    },
+    {
+      "name": "1. Create Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/create-order",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "create-order"]
+        },
+        "description": "Creates a PayPal AUTHORIZE order for $10.00 USD (Sandbox integration test).\n\nCopy the returned orderId into the {{orderId}} variable."
+      }
+    },
+    {
+      "name": "2. Authorize Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/authorize/{{orderId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "authorize", "{{orderId}}"]
+        },
+        "description": "Authorizes a buyer-approved order.\n\nCall after the buyer completes checkout in the React frontend.\nCopy the returned authorizationId into {{authorizationId}}."
+      }
+    },
+    {
+      "name": "3a. Capture Milestone 1 ($3 partial)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": \"3.00\",\n  \"finalCapture\": false\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/capture/{{authorizationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "capture", "{{authorizationId}}"]
+        },
+        "description": "SANDBOX ONLY – Captures $3 as a partial milestone payment.\nfinalCapture=false means the authorization remains open."
+      }
+    },
+    {
+      "name": "3b. Capture Final Milestone ($7 final)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": \"7.00\",\n  \"finalCapture\": true\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/capture/{{authorizationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "capture", "{{authorizationId}}"]
+        },
+        "description": "SANDBOX ONLY – Captures $7 as the final milestone payment.\nfinalCapture=true closes the authorization."
+      }
+    },
+    {
+      "name": "4. Void Authorization",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/void/{{authorizationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "void", "{{authorizationId}}"]
+        },
+        "description": "Voids an authorization that has not been fully captured.\nHandles already-captured and expired authorizations gracefully."
+      }
+    },
+    {
+      "name": "5. Get Order Details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/order/{{orderId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "order", "{{orderId}}"]
+        },
+        "description": "Retrieves full order details including status, amount, and payment information."
+      }
+    },
+    {
+      "name": "6. Get Authorization Details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/paypal/authorization/{{authorizationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "paypal", "authorization", "{{authorizationId}}"]
+        },
+        "description": "Retrieves authorization details including status, amount, and expiration time."
+      }
+    }
+  ]
+}
