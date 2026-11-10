@@ -42,6 +42,9 @@
  */
 
 import https from 'https';
+import Payment from '../models/Payment.js';
+import Milestone from '../models/Milestone.js';
+import Project from '../models/Project.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Webhook Signature Verification
@@ -286,7 +289,12 @@ async function onOrderApproved(event) {
 
   console.log(`[Webhook] Order approved | orderId=${orderId} | status=${status}`);
 
-  // TODO (Member B): await Project.findOneAndUpdate({ paypalOrderId: orderId }, { orderStatus: 'APPROVED' });
+  if (orderId) {
+    await Payment.findOneAndUpdate(
+      { paypalOrderId: orderId },
+      { status: 'AUTHORIZED' }
+    );
+  }
 }
 
 /**
@@ -305,12 +313,13 @@ async function onAuthorizationCreated(event) {
     `[Webhook] Authorization created | authorizationId=${authorizationId} | amount=${JSON.stringify(amount)} | status=${status}`
   );
 
-  // TODO (Member B):
-  // const orderId = resource?.supplementary_data?.related_ids?.order_id;
-  // await Project.findOneAndUpdate(
-  //   { paypalOrderId: orderId },
-  //   { paypalAuthorizationId: authorizationId, paymentStatus: 'AUTHORIZED' }
-  // );
+  const orderId = resource?.supplementary_data?.related_ids?.order_id;
+  if (orderId && authorizationId) {
+    await Payment.findOneAndUpdate(
+      { paypalOrderId: orderId },
+      { authorizationId, status: 'AUTHORIZED' }
+    );
+  }
 }
 
 /**
@@ -325,11 +334,12 @@ async function onAuthorizationVoided(event) {
 
   console.log(`[Webhook] Authorization voided | authorizationId=${authorizationId}`);
 
-  // TODO (Member B):
-  // await Project.findOneAndUpdate(
-  //   { paypalAuthorizationId: authorizationId },
-  //   { paymentStatus: 'VOIDED' }
-  // );
+  if (authorizationId) {
+    await Payment.findOneAndUpdate(
+      { authorizationId },
+      { status: 'VOIDED' }
+    );
+  }
 }
 
 /**
@@ -350,15 +360,33 @@ async function onCaptureCompleted(event) {
     `[Webhook] Capture completed | captureId=${captureId} | amount=${JSON.stringify(amount)} | finalCapture=${finalCapture}`
   );
 
-  // TODO (Member B):
-  // const authorizationId = resource?.supplementary_data?.related_ids?.authorization_id;
-  // await Milestone.findOneAndUpdate(
-  //   { paypalAuthorizationId: authorizationId, status: 'PENDING_CAPTURE' },
-  //   { paymentStatus: 'PAID', paypalCaptureId: captureId, paidAt: new Date() }
-  // );
-  // if (finalCapture) {
-  //   await Project.findOneAndUpdate(..., { paymentStatus: 'COMPLETED' });
-  // }
+  if (captureId) {
+    const payment = await Payment.findOne({ "captures.captureId": captureId });
+    if (payment) {
+      const cap = payment.captures.find((c) => c.captureId === captureId);
+      if (cap) {
+        cap.status = "COMPLETED";
+        payment.totalCaptured = payment.captures
+          .filter((c) => c.status === "COMPLETED")
+          .reduce((sum, c) => sum + c.amount, 0);
+
+        if (finalCapture) {
+          payment.status = "COMPLETED";
+        } else {
+          payment.status = "PARTIALLY_CAPTURED";
+        }
+        await payment.save();
+
+        await Milestone.findByIdAndUpdate(cap.milestoneId, { status: "PAID" });
+
+        const allMilestones = await Milestone.find({ projectId: payment.projectId });
+        const allPaid = allMilestones.every((m) => m.status === "PAID");
+        if (allPaid) {
+          await Project.findByIdAndUpdate(payment.projectId, { status: "COMPLETED" });
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -376,11 +404,12 @@ async function onCapturePending(event) {
     `[Webhook] Capture pending | captureId=${captureId} | reason=${JSON.stringify(statusDetails)}`
   );
 
-  // TODO (Member B):
-  // await Milestone.findOneAndUpdate(
-  //   { paypalCaptureId: captureId },
-  //   { paymentStatus: 'PENDING_REVIEW', statusDetails }
-  // );
+  if (captureId) {
+    await Payment.findOneAndUpdate(
+      { "captures.captureId": captureId },
+      { $set: { "captures.$.status": "PENDING" } }
+    );
+  }
 }
 
 /**
@@ -399,9 +428,10 @@ async function onCaptureDenied(event) {
     `[Webhook] Capture denied | captureId=${captureId} | reason=${JSON.stringify(statusDetails)}`
   );
 
-  // TODO (Member B):
-  // await Milestone.findOneAndUpdate(
-  //   { paypalCaptureId: captureId },
-  //   { paymentStatus: 'FAILED', statusDetails }
-  // );
+  if (captureId) {
+    await Payment.findOneAndUpdate(
+      { "captures.captureId": captureId },
+      { $set: { "captures.$.status": "DENIED" }, status: "FAILED" }
+    );
+  }
 }
