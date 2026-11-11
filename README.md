@@ -30,7 +30,7 @@ MilestonePay solves the trust gap between freelancers and clients:
 | PayPal (Backend) | @paypal/paypal-server-sdk v2.5.0 |
 | Security | Helmet, express-rate-limit, CORS |
 | Logging | Morgan |
-| AI (planned) | LangGraph.js (Member D) |
+| AI | LangGraph.js (`@langchain/langgraph`), Groq (`@langchain/groq`), Zod |
 
 ---
 
@@ -40,28 +40,40 @@ MilestonePay solves the trust gap between freelancers and clients:
 MilestonePay/
 ├── backend/
 │   ├── src/
+│   │   ├── ai/
+│   │   │   ├── graphs/                   # LangGraph workflows (generator, evaluator, assistant)
+│   │   │   ├── tools/                    # GitHub REST API, SSRF guard & vision inspector
+│   │   │   ├── utils/                    # Deterministic budget & deadline reconciliation
+│   │   │   ├── llmClient.js              # Groq ChatGroq & structured-output helper
+│   │   │   └── schemas.js                # Zod structured output schemas
 │   │   ├── config/
 │   │   │   ├── db.js                     # MongoDB connection
 │   │   │   └── paypalClient.js           # PayPal SDK client (lazy init)
-│   │   ├── controllers/
-│   │   │   └── paypalController.js       # Express route handlers
-│   │   ├── routes/
-│   │   │   └── paypalRoutes.js           # PayPal API routes
+│   │   ├── controllers/                  # Express route handlers (auth, projects, AI, PayPal...)
+│   │   ├── models/                       # Mongoose schemas (User, Project, Milestone, AIEvaluation...)
+│   │   ├── routes/                       # Express routers (/api/auth, /api/ai, /api/paypal...)
 │   │   ├── services/
 │   │   │   ├── paypalService.js          # PayPal business logic
 │   │   │   └── paypalWebhookService.js   # Webhook verification & handlers
 │   │   └── server.js                     # Express app entry point
+│   ├── tests/
+│   │   └── ai.test.js                    # Backend LangGraph, GitHub inspector & controller tests
 │   ├── .env                              # Private (gitignored)
 │   ├── .env.example                      # Template
 │   └── package.json
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   └── PayPalCheckout.jsx        # PayPal integration test UI
+│   │   ├── api/                          # Axios client and REST API modules
+│   │   ├── components/                   # Dashboard, milestone, submission, payment & AI components
+│   │   ├── pages/                        # Role dashboards, project views & checkout pages
+│   │   ├── services/
+│   │   │   └── aiService.js              # Real LangGraph AI API client
 │   │   ├── App.jsx                       # Router and routes
 │   │   ├── main.jsx                      # React entry point
 │   │   └── index.css
+│   ├── tests/
+│   │   └── frontend.test.js              # Frontend utility and aiService tests
 │   ├── .env                              # Private (gitignored)
 │   ├── .env.example                      # Template
 │   └── package.json
@@ -70,7 +82,9 @@ MilestonePay/
 ├── PAYPAL_SETUP.md                       # PayPal configuration guide
 ├── PAYPAL_API.md                         # API endpoint documentation
 ├── PAYPAL_FLOW.md                        # Complete payment flow documentation
-├── BACKEND_API.md                        # Member B complete API & schemas documentation
+├── BACKEND_API.md                        # Member B & D complete API & schemas documentation
+├── FRONTEND_API.md                       # Member C frontend architecture & AI integration guide
+├── AI_ARCHITECTURE.md                    # Member D LangGraph.js agents & setup guide
 └── MilestonePay_MemberB_API.postman_collection.json
 ```
 
@@ -114,10 +128,19 @@ npm run dev
 PORT=5001
 CLIENT_URL=http://localhost:5173
 MONGODB_URI=mongodb+srv://...
+JWT_SECRET=your_jwt_secret_key_here
 PAYPAL_CLIENT_ID=your_sandbox_client_id
 PAYPAL_CLIENT_SECRET=your_sandbox_client_secret
 PAYPAL_ENV=sandbox
 PAYPAL_WEBHOOK_ID=your_webhook_id
+
+# LangGraph.js AI Configuration (Groq)
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+
+# Optional GitHub token for inspecting private freelancer repositories
+GITHUB_TOKEN=
 ```
 
 ### Frontend (`frontend/.env`)
@@ -125,6 +148,7 @@ PAYPAL_WEBHOOK_ID=your_webhook_id
 ```env
 VITE_API_URL=http://localhost:5001
 VITE_PAYPAL_CLIENT_ID=your_sandbox_client_id
+VITE_USE_MOCK_AI=false
 ```
 
 > ⚠️ **Never commit `.env` files. The `.gitignore` excludes them.**
@@ -136,7 +160,9 @@ VITE_PAYPAL_CLIENT_ID=your_sandbox_client_id
 | Command | Location | Description |
 |---------|----------|-------------|
 | `npm run dev` | `backend/` | Start Express backend (port 5001) |
+| `npm test` | `backend/` | Run backend unit & LangGraph workflow tests |
 | `npm run dev` | `frontend/` | Start Vite frontend (port 5173) |
+| `npm test` | `frontend/` | Run frontend utility & AI client tests |
 
 ---
 
@@ -179,8 +205,13 @@ curl -X POST http://localhost:5001/api/paypal/capture/AUTH_ID_HERE \
 | `GET` | `/api/paypal/order/:orderId` | Get order details |
 | `GET` | `/api/paypal/authorization/:authorizationId` | Get authorization details |
 | `POST` | `/api/paypal/webhook` | PayPal webhook receiver |
+| `POST` | `/api/ai/generate-milestones` | Preview LangGraph AI milestone breakdown from project brief |
+| `POST` | `/api/ai/projects/:projectId/generate-milestones` | Generate & persist AI milestones for an editable project |
+| `POST` | `/api/ai/milestones/:milestoneId/evaluate` | Evaluate submitted code, docs & screenshots via LangGraph |
+| `GET` | `/api/ai/milestones/:milestoneId/evaluation` | Fetch saved AI evaluation report |
+| `POST` | `/api/ai/projects/:projectId/assistant` | Query context-aware AI project & escrow assistant |
 
-See [PAYPAL_API.md](./PAYPAL_API.md) for PayPal endpoints and [BACKEND_API.md](./BACKEND_API.md) for complete application & business APIs.
+See [PAYPAL_API.md](./PAYPAL_API.md) for PayPal endpoints, [BACKEND_API.md](./BACKEND_API.md) for complete application & business APIs, [FRONTEND_API.md](./FRONTEND_API.md) for frontend integration, and [AI_ARCHITECTURE.md](./AI_ARCHITECTURE.md) for LangGraph.js workflows and setup.
 
 ---
 
@@ -190,8 +221,8 @@ See [PAYPAL_API.md](./PAYPAL_API.md) for PayPal endpoints and [BACKEND_API.md](.
 |--------|---------------|
 | **A** | Project setup, PayPal integration, webhooks ✅ |
 | **B** | MongoDB schemas, authentication, business APIs ✅ |
-| **C** | Complete frontend UI and dashboards |
-| **D** | LangGraph.js AI agents for milestone generation and evaluation |
+| **C** | Complete frontend UI and dashboards ✅ |
+| **D** | LangGraph.js AI agents for milestone generation, deliverable evaluation & project assistance ✅ |
 
 ---
 

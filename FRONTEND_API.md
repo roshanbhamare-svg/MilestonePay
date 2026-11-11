@@ -18,8 +18,7 @@ frontend/src/
 │   ├── paymentApi.js          # /api/payments/* and /api/health
 │   └── notificationApi.js     # /api/notifications/*
 ├── services/
-│   ├── aiService.js           # Single AI integration facade (controls mock vs LangGraph API)
-│   └── aiMockService.js       # Temporary mock AI milestone generator & deliverable evaluator
+│   └── aiService.js           # LangGraph.js AI backend integration client (/api/ai/*)
 ├── context/
 │   ├── AuthContext.jsx        # Session persistence, login, register, logout, profile sync
 │   └── ToastContext.jsx       # Global user feedback toasts
@@ -80,105 +79,36 @@ All non-AI features are connected directly to Express + MongoDB endpoints:
 
 ---
 
-## 4. Temporary Mock AI Layer (For Member D Replacement)
+## 4. LangGraph.js AI Integration (`frontend/src/services/aiService.js`)
 
-No mock AI data is hardcoded in UI components. All temporary mock AI responses live strictly in:
+All temporary mock AI services (`aiMockService.js`) have been removed (`USE_MOCK_AI = false`, `VITE_USE_MOCK_AI=false`). UI components (`AIMilestoneGenerator.jsx`, `AIEvaluationPanel.jsx`, `AIProjectAssistant.jsx`) call real Express + LangGraph.js endpoints via [frontend/src/services/aiService.js](frontend/src/services/aiService.js) with a `90000ms` timeout for multi-step graph execution.
 
-- [frontend/src/services/aiMockService.js](frontend/src/services/aiMockService.js)
-- Controlled by `USE_MOCK_AI` in [frontend/src/services/aiService.js](frontend/src/services/aiService.js) (`VITE_USE_MOCK_AI !== 'false'`).
+### Connected AI Endpoints
 
-### Expected AI Contracts
+#### A. Milestone Generator (`POST /api/ai/generate-milestones` & `POST /api/ai/projects/:projectId/generate-milestones`)
 
-#### A. Milestone Generator (`POST /api/ai/projects/:projectId/generate-milestones`)
-
-**Request from Frontend (`aiService.generateMilestones`):**
-```json
-{
-  "title": "AI-Powered SaaS Dashboard",
-  "description": "Full stack app with auth and PayPal billing.",
-  "budget": 300,
-  "currency": "USD",
-  "deadline": "2026-12-31T00:00:00.000Z"
-}
-```
-
-**Expected Backend Response (`data.milestones`):**
-```json
-{
-  "success": true,
-  "data": {
-    "milestones": [
-      {
-        "title": "Architecture, UI Foundation & Setup",
-        "description": "...",
-        "paymentAmount": 60,
-        "deadline": "2026-11-20T00:00:00.000Z",
-        "deliverables": [{ "title": "...", "description": "..." }],
-        "acceptanceCriteria": [{ "criteria": "...", "completed": false }],
-        "order": 1
-      }
-    ]
-  }
-}
-```
-> **Note for Member D:** If generating milestones *before* a project ID exists (on `/projects/new`), either expose an unpersisted preview route or create the project first and call `POST /api/ai/projects/:projectId/generate-milestones`. Sum of `paymentAmount` must equal `budget`.
+- During project creation (`/projects/new`) without a `projectId`, `aiService.generateMilestones` calls `POST /api/ai/generate-milestones` (stateless preview, `persisted: false`).
+- Inside `AIMilestoneGenerator.jsx` on an existing project, `aiService.generateMilestones` sends `persist: false` to `POST /api/ai/projects/:projectId/generate-milestones` so the client can review, edit, and confirm milestones (or adjust ambiguity flags in `requirementAnalysis.missingOrAmbiguousRequirements`) before saving via `milestoneApi.create`. Sum of `paymentAmount` matches `budget` down to exact cents.
 
 #### B. Deliverable Evaluation (`POST /api/ai/milestones/:milestoneId/evaluate` & `GET /api/ai/milestones/:milestoneId/evaluation`)
 
-**Expected Backend Response (`data.evaluation` matching `AIEvaluation` schema):**
-```json
-{
-  "success": true,
-  "data": {
-    "evaluation": {
-      "_id": "...",
-      "milestoneId": "...",
-      "submissionId": "...",
-      "overallScore": 85,
-      "status": "COMPLETED",
-      "criteriaResults": [
-        { "criteria": "JWT auth working", "met": true, "comments": "Verified in middleware/auth.js" }
-      ],
-      "completedRequirements": ["JWT auth working"],
-      "missingRequirements": ["Missing integration tests"],
-      "improvementSuggestions": ["Add unit tests for token expiry"],
-      "recommendations": "Request minor test additions or proceed with approval."
-    }
-  }
-}
-```
+Returns `data.evaluation` matching the `AIEvaluation` Mongoose schema (`overallScore`, `criteriaResults`, `completedRequirements`, `missingRequirements`, `improvementSuggestions`, `recommendations`, `analysisMetadata`) plus verification metadata.
 
 #### C. AI Project Assistant (`POST /api/ai/projects/:projectId/assistant`)
 
-**Request from Frontend (`aiService.askProjectAssistant`):**
-```json
-{
-  "question": "Which milestones are overdue or at risk?"
-}
-```
+Sends `{ question }` and receives `{ answer, highlights, suggestedNextSteps, intent, answeredAt }` grounded in live MongoDB project, milestone, submission, evaluation, and PayPal escrow data.
 
-**Expected Backend Response (`data`):**
-```json
-{
-  "success": true,
-  "data": {
-    "answer": "1 milestone has passed its deadline...",
-    "highlights": ["Project status: ACTIVE (1/3 milestones paid)"],
-    "suggestedNextSteps": ["Review overdue milestones with the freelancer."]
-  }
-}
-```
+### Member D Completion Status
 
-### How Member D Switches from Mock to Real LangGraph
-
-1. Implement the LangGraph.js workflows on the backend endpoints listed above.
-2. Set `VITE_USE_MOCK_AI=false` in `frontend/.env` (and update `USE_MOCK_AI` default in `frontend/src/services/aiService.js`).
-3. Delete `frontend/src/services/aiMockService.js` and remove its import from `frontend/src/services/aiService.js`.
-4. Existing UI components (`AIMilestoneGenerator.jsx`, `AIEvaluationPanel.jsx`, `AIProjectAssistant.jsx`) will work immediately without redesign.
+1. Implemented the LangGraph.js workflows (`milestoneGeneratorGraph.js`, `deliverableEvaluationGraph.js`, `projectAssistantGraph.js`) on the backend `/api/ai/*` endpoints.
+2. Configured `VITE_USE_MOCK_AI=false` in `frontend/.env` and `USE_MOCK_AI = false` in `frontend/src/services/aiService.js`.
+3. Removed `frontend/src/services/aiMockService.js` and updated `frontend/tests/frontend.test.js` to verify real API routing.
+4. Existing UI components (`AIMilestoneGenerator.jsx`, `AIEvaluationPanel.jsx`, `AIProjectAssistant.jsx`) connect directly to the LangGraph backend.
 
 ---
 
-## 5. Integration Notes Observed During Member C Development
+## 5. Payment Parameterization Update (Member D)
 
-- `backend/src/controllers/paymentController.js` currently calls Member A's `createOrder()` without passing `project.budget` / `project.currency` (so PayPal Sandbox orders default to `$10.00 USD`). Testing end-to-end PayPal sandbox authorization + partial capture works directly with a `$10.00 USD` project, or Member B/D can parameterize `createOrder(amount, currency)` for larger project budgets.
+- Updated `backend/src/services/paypalService.js` and `backend/src/controllers/paymentController.js` so `createOrder(amount, currency, description)` and `captureAuthorization(..., currency)` parameterize `project.budget` and `project.currency` (while keeping `$10.00 USD` defaults for Member A's standalone `/api/paypal` sandbox test route).
+- Fixed `isFinal` milestone capture closure logic in `paymentController.js` so approving multiple milestones at once does not close the PayPal authorization prematurely when unpaid milestones remain.
 

@@ -31,7 +31,11 @@ export const authorizeProjectPayment = async (req, res) => {
       return res.status(400).json({ success: false, error: "Payment already authorized for this project" });
     }
 
-    const orderResult = await createOrder();
+    const orderResult = await createOrder(
+      project.budget,
+      project.currency,
+      `MilestonePay – ${project.title}`
+    );
 
     let payment = await Payment.findOne({ projectId: project._id });
     if (!payment) {
@@ -46,6 +50,8 @@ export const authorizeProjectPayment = async (req, res) => {
       });
     } else {
       payment.paypalOrderId = orderResult.orderId;
+      payment.totalAuthorized = project.budget;
+      payment.currency = project.currency;
       payment.status = "PENDING";
       await payment.save();
     }
@@ -131,20 +137,20 @@ export const captureMilestonePayment = async (req, res) => {
     }
 
     const allMilestones = await Milestone.find({ projectId: project._id });
-    const approvedMilestones = allMilestones.filter(
-      (m) => m.status === "APPROVED" || m.status === "PAID"
+    const otherUnpaidMilestones = allMilestones.filter(
+      (m) => m._id.toString() !== milestone._id.toString() && m.status !== "PAID"
     );
-    const remainingUnapproved = allMilestones.filter(
-      (m) => m.status !== "APPROVED" && m.status !== "PAID"
-    );
-    const isFinal = remainingUnapproved.length === 0;
+    const isFinal = otherUnpaidMilestones.length === 0;
 
     const amount = milestone.paymentAmount.toFixed(2);
+    const captureIdempotencyKey = `milestone-${milestone._id}-${payment.captures.length}`;
 
     const captureResult = await captureAuthorization(
       payment.authorizationId,
       amount,
-      isFinal
+      isFinal,
+      captureIdempotencyKey,
+      payment.currency || project.currency
     );
 
     payment.captures.push({

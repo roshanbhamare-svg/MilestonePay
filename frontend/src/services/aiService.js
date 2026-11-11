@@ -1,62 +1,70 @@
 import axiosClient from '../api/axiosClient.js';
-import {
-  mockGenerateMilestones,
-  mockEvaluateSubmission,
-  mockAskProjectAssistant,
-  getCachedMockEvaluation,
-} from './aiMockService.js';
 
 /**
- * AI Integration Facade (Member C -> Member D handover boundary)
+ * AI Integration Service (Member D – LangGraph.js Backend)
  *
- * Member C keeps mock AI active while Member D builds the LangGraph.js agents.
- * To switch to real LangGraph endpoints, set VITE_USE_MOCK_AI=false in frontend/.env
- * (or flip USE_MOCK_AI below) once Member D completes:
+ * Connects frontend AI features directly to Express + LangGraph.js backend routes:
+ *   - POST /api/ai/generate-milestones (unpersisted preview for new project creation)
  *   - POST /api/ai/projects/:projectId/generate-milestones
  *   - POST /api/ai/milestones/:milestoneId/evaluate
  *   - GET  /api/ai/milestones/:milestoneId/evaluation
  *   - POST /api/ai/projects/:projectId/assistant
  */
-export const USE_MOCK_AI = import.meta.env?.VITE_USE_MOCK_AI !== 'false';
+export const USE_MOCK_AI = false;
+
+const AI_REQUEST_TIMEOUT_MS = 90000;
 
 export const aiService = {
   isMockMode() {
-    return USE_MOCK_AI;
+    return false;
   },
 
   /**
-   * Generate structured milestones from project details.
-   * Matches POST /api/milestones/project/:projectId/bulk payload shape.
+   * Generate structured milestones from project details via LangGraph.js.
+   * Uses the preview endpoint before a projectId exists, or the project endpoint when editing.
    */
-  async generateMilestones({ projectId, title, description, budget, currency, deadline }) {
-    if (!USE_MOCK_AI && projectId) {
-      const { data } = await axiosClient.post(`/ai/projects/${projectId}/generate-milestones`, {
+  async generateMilestones({
+    projectId = null,
+    title,
+    description,
+    budget,
+    currency,
+    deadline,
+    persist = false,
+  }) {
+    const endpoint = projectId
+      ? `/ai/projects/${projectId}/generate-milestones`
+      : '/ai/generate-milestones';
+
+    const { data } = await axiosClient.post(
+      endpoint,
+      {
         title,
         description,
         budget,
         currency,
         deadline,
-      });
-      const payload = data.data;
-      if (Array.isArray(payload?.milestones)) {
-        return { milestones: payload.milestones, isMock: false };
-      }
+        ...(projectId ? { persist } : {}),
+      },
+      { timeout: AI_REQUEST_TIMEOUT_MS }
+    );
+
+    const payload = data?.data;
+    if (!Array.isArray(payload?.milestones)) {
       throw new Error('AI backend returned no milestones array');
     }
 
-    const milestones = await mockGenerateMilestones({
-      title,
-      description,
-      budget,
-      currency,
-      deadline,
-    });
-    return { milestones, isMock: true };
+    return {
+      milestones: payload.milestones,
+      requirementAnalysis: payload.requirementAnalysis || null,
+      tasks: payload.tasks || [],
+      persisted: Boolean(payload.persisted),
+      isMock: false,
+    };
   },
 
   /**
-   * Fetch stored AI evaluation from MongoDB first (Member B/D contract).
-   * Falls back to session mock evaluation if USE_MOCK_AI is enabled and DB has none.
+   * Fetch the latest persisted AI evaluation report from MongoDB.
    */
   async getMilestoneEvaluation(milestoneId) {
     try {
@@ -70,62 +78,55 @@ export const aiService = {
       }
     }
 
-    if (USE_MOCK_AI) {
-      const cached = getCachedMockEvaluation(milestoneId);
-      if (cached) {
-        return { evaluation: cached, isMock: true };
-      }
-    }
-
-    return { evaluation: null, isMock: USE_MOCK_AI };
+    return { evaluation: null, isMock: false };
   },
 
   /**
-   * Trigger deliverable evaluation against milestone acceptance criteria.
+   * Trigger LangGraph deliverable evaluation against milestone acceptance criteria.
    */
   async evaluateSubmission({ milestone, submission }) {
-    if (!USE_MOCK_AI) {
-      const { data } = await axiosClient.post(`/ai/milestones/${milestone._id}/evaluate`, {
+    const { data } = await axiosClient.post(
+      `/ai/milestones/${milestone._id}/evaluate`,
+      {
         submissionId: submission?._id,
-      });
-      if (data?.data?.evaluation) {
-        return { evaluation: data.data.evaluation, isMock: false };
-      }
-      const fetched = await this.getMilestoneEvaluation(milestone._id);
-      if (fetched.evaluation) {
-        return fetched;
-      }
-      throw new Error('AI evaluation completed without returning a report');
+      },
+      { timeout: AI_REQUEST_TIMEOUT_MS }
+    );
+
+    if (data?.data?.evaluation) {
+      return { evaluation: data.data.evaluation, isMock: false };
     }
 
-    const evaluation = await mockEvaluateSubmission({ milestone, submission });
-    return { evaluation, isMock: true };
+    const fetched = await this.getMilestoneEvaluation(milestone._id);
+    if (fetched.evaluation) {
+      return fetched;
+    }
+
+    throw new Error('AI evaluation completed without returning a report');
   },
 
   /**
-   * Project Q&A, status summary, and delay inspection assistant.
+   * Ask the LangGraph AI Project Assistant about scope, delays, disputes, or PayPal status.
    */
-  async askProjectAssistant({ projectId, project, milestones, payment, question }) {
-    if (!USE_MOCK_AI && projectId) {
-      const { data } = await axiosClient.post(`/ai/projects/${projectId}/assistant`, {
-        question,
-      });
-      const response = data.data;
-      return {
-        answer: response.answer || response.message || '',
-        highlights: response.highlights || [],
-        suggestedNextSteps: response.suggestedNextSteps || [],
-        answeredAt: response.answeredAt || new Date().toISOString(),
-        isMock: false,
-      };
+  async askProjectAssistant({ projectId, question }) {
+    if (!projectId) {
+      throw new Error('projectId is required to ask the AI project assistant');
     }
 
-    const mockReply = await mockAskProjectAssistant({
-      project,
-      milestones,
-      payment,
-      question,
-    });
-    return { ...mockReply, isMock: true };
+    const { data } = await axiosClient.post(
+      `/ai/projects/${projectId}/assistant`,
+      { question },
+      { timeout: AI_REQUEST_TIMEOUT_MS }
+    );
+
+    const response = data?.data || {};
+    return {
+      answer: response.answer || response.message || '',
+      highlights: response.highlights || [],
+      suggestedNextSteps: response.suggestedNextSteps || [],
+      intent: response.intent || 'general',
+      answeredAt: response.answeredAt || new Date().toISOString(),
+      isMock: false,
+    };
   },
 };

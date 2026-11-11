@@ -157,7 +157,7 @@ export default function CreateProjectPage() {
                 required
               />
               <span className="form-hint">
-                Note: PayPal Sandbox order helper defaults to $10.00 USD in Member A/B&apos;s current backend.
+                Funds will be authorized for this project budget and currency via PayPal Sandbox.
               </span>
             </div>
 

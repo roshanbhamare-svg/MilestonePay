@@ -88,7 +88,7 @@ export default function Sidebar({ isOpen, onClose }) {
               {user?.role || 'user'}
             </span>
           </div>
-          <div style={{ marginTop: '6px' }}>PayPal Sandbox • AI Mock Ready</div>
+          <div style={{ marginTop: '6px' }}>PayPal Sandbox • LangGraph AI</div>
         </div>
       </aside>
     </>

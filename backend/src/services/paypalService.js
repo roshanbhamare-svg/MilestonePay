@@ -115,15 +115,26 @@ async function callPayPalSDK(operation, label) {
 /**
  * Create a new PayPal order with AUTHORIZE intent.
  *
- * Uses a fixed $10.00 USD amount for the integration test.
- * In production, Member B must supply the validated project budget from MongoDB.
+ * Defaults to $10.00 USD for standalone sandbox integration testing.
+ * Project payments supply the validated project budget and currency from MongoDB.
  *
+ * @param {number|string} [amount]
+ * @param {string} [currency]
+ * @param {string} [description]
  * @returns {{ orderId, status, links }}
  */
-export async function createOrder() {
+export async function createOrder(
+  amount = INTEGRATION_TEST_AMOUNT,
+  currency = INTEGRATION_TEST_CURRENCY,
+  description = 'MilestonePay – Integration Test Authorization'
+) {
   const idempotencyKey = generateIdempotencyKey('create-order');
+  const validatedAmount = validateAmount(amount);
+  const currencyCode = String(currency || INTEGRATION_TEST_CURRENCY).trim().toUpperCase();
 
-  console.log(`[PayPal Service] Creating order | idempotencyKey=${idempotencyKey}`);
+  console.log(
+    `[PayPal Service] Creating order | amount=${validatedAmount} ${currencyCode} | idempotencyKey=${idempotencyKey}`
+  );
 
   const response = await callPayPalSDK(
     () =>
@@ -133,10 +144,10 @@ export async function createOrder() {
           purchaseUnits: [
             {
               amount: {
-                currencyCode: INTEGRATION_TEST_CURRENCY,
-                value: INTEGRATION_TEST_AMOUNT,
+                currencyCode,
+                value: validatedAmount,
               },
-              description: 'MilestonePay – Integration Test Authorization',
+              description: String(description || 'MilestonePay Authorization').slice(0, 127),
             },
           ],
           paymentSource: {
@@ -272,21 +283,24 @@ export async function getAuthorizationDetails(authorizationId) {
  * @param {string} amount           – Positive dollar amount (e.g. "3.00")
  * @param {boolean} finalCapture    – true for the last milestone capture
  * @param {string} [idempotencyKey] – Stable key for retries; generated if omitted
+ * @param {string} [currency]       – ISO currency code (defaults to USD)
  * @returns {{ captureId, status, amount, finalCapture }}
  */
 export async function captureAuthorization(
   authorizationId,
   amount,
   finalCapture = false,
-  idempotencyKey = null
+  idempotencyKey = null,
+  currency = INTEGRATION_TEST_CURRENCY
 ) {
   if (!authorizationId) throw new Error('authorizationId is required');
 
   const validatedAmount = validateAmount(amount);
+  const currencyCode = String(currency || INTEGRATION_TEST_CURRENCY).trim().toUpperCase();
   const captureKey = idempotencyKey ?? generateIdempotencyKey(`capture-${authorizationId}`);
 
   console.log(
-    `[PayPal Service] Capturing authorization | authorizationId=${authorizationId} | amount=${validatedAmount} | finalCapture=${finalCapture} | idempotencyKey=${captureKey}`
+    `[PayPal Service] Capturing authorization | authorizationId=${authorizationId} | amount=${validatedAmount} ${currencyCode} | finalCapture=${finalCapture} | idempotencyKey=${captureKey}`
   );
 
   const response = await callPayPalSDK(
@@ -295,7 +309,7 @@ export async function captureAuthorization(
         authorizationId,
         body: {
           amount: {
-            currencyCode: INTEGRATION_TEST_CURRENCY,
+            currencyCode,
             value: validatedAmount,
           },
           finalCapture,

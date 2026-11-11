@@ -7,13 +7,8 @@ import {
   getInitials,
   isOverdue,
 } from '../src/utils/formatters.js';
-import {
-  mockGenerateMilestones,
-  mockEvaluateSubmission,
-  mockAskProjectAssistant,
-  getCachedMockEvaluation,
-} from '../src/services/aiMockService.js';
-import { aiService } from '../src/services/aiService.js';
+import axiosClient from '../src/api/axiosClient.js';
+import { aiService, USE_MOCK_AI } from '../src/services/aiService.js';
 
 describe('formatters utility', () => {
   it('formats single and multi-currency summaries cleanly', () => {
@@ -52,71 +47,134 @@ describe('formatters utility', () => {
   });
 });
 
-describe('aiMockService & aiService facade', () => {
-  it('generates balanced milestones summing exactly to fractional project budget', async () => {
-    const milestones = await mockGenerateMilestones({
-      title: 'React Auth & PayPal Dashboard',
-      description: 'Build authentication, dashboard, and payment escrow workflows',
-      budget: 333.33,
-      deadline: new Date(Date.now() + 30 * 86400000).toISOString(),
-    });
+describe('aiService real LangGraph API facade', () => {
+  it('runs with mock AI completely disabled', () => {
+    assert.equal(USE_MOCK_AI, false);
+    assert.equal(aiService.isMockMode(), false);
+  });
 
-    assert.equal(milestones.length, 4);
-    const total = milestones.reduce((sum, m) => sum + m.paymentAmount, 0);
-    assert.ok(Math.abs(total - 333.33) < 0.001);
-    for (const m of milestones) {
-      assert.ok(m.title.length > 0);
-      assert.ok(Array.isArray(m.deliverables) && m.deliverables.length > 0);
-      assert.ok(Array.isArray(m.acceptanceCriteria) && m.acceptanceCriteria.length > 0);
+  it('routes milestone preview and project generation to real backend endpoints', async () => {
+    const calls = [];
+    const originalPost = axiosClient.post;
+
+    axiosClient.post = async (url, body, config) => {
+      calls.push({ url, body, config });
+      return {
+        data: {
+          success: true,
+          data: {
+            milestones: [
+              {
+                title: 'Setup',
+                description: 'Init',
+                paymentAmount: 100,
+                deadline: '2026-12-10T00:00:00.000Z',
+                deliverables: [{ title: 'Repo', description: 'Code' }],
+                acceptanceCriteria: [{ criteria: 'Builds cleanly', completed: false }],
+                order: 1,
+              },
+            ],
+            requirementAnalysis: { missingOrAmbiguousRequirements: ['Clarify hosting target'] },
+            persisted: Boolean(url.includes('/projects/')),
+          },
+        },
+      };
+    };
+
+    try {
+      const preview = await aiService.generateMilestones({
+        title: 'Demo',
+        description: 'Build demo app',
+        budget: 100,
+        currency: 'USD',
+        deadline: '2026-12-31T00:00:00.000Z',
+      });
+      assert.equal(calls[0].url, '/ai/generate-milestones');
+      assert.equal(preview.isMock, false);
+      assert.equal(preview.milestones.length, 1);
+
+      const projectGen = await aiService.generateMilestones({
+        projectId: 'proj-123',
+        title: 'Demo',
+        description: 'Build demo app',
+        budget: 100,
+        currency: 'USD',
+        deadline: '2026-12-31T00:00:00.000Z',
+        persist: false,
+      });
+      assert.equal(calls[1].url, '/ai/projects/proj-123/generate-milestones');
+      assert.equal(calls[1].body.persist, false);
+      assert.equal(projectGen.isMock, false);
+    } finally {
+      axiosClient.post = originalPost;
     }
   });
 
-  it('evaluates complete vs incomplete submissions and caches result by milestoneId', async () => {
-    const milestone = {
-      _id: 'ms-test-1',
-      acceptanceCriteria: [
-        { criteria: 'GitHub repository link provided' },
-        { criteria: 'Screenshots and test notes attached' },
-      ],
+  it('fetches and triggers AI deliverable evaluations and assistant answers', async () => {
+    const originalGet = axiosClient.get;
+    const originalPost = axiosClient.post;
+
+    axiosClient.get = async () => {
+      const err = new Error('Not found');
+      err.response = { status: 404 };
+      throw err;
     };
 
-    const weakEval = await mockEvaluateSubmission({
-      milestone,
-      submission: { _id: 'sub-1', version: 1, githubUrl: '', files: [], notes: 'done' },
-    });
-    assert.ok(weakEval.overallScore < 100);
-    assert.ok(weakEval.missingRequirements.length > 0);
+    axiosClient.post = async (url) => {
+      if (url.endsWith('/evaluate')) {
+        return {
+          data: {
+            success: true,
+            data: {
+              evaluation: {
+                _id: 'eval-1',
+                overallScore: 75,
+                criteriaResults: [],
+                completedRequirements: ['Auth'],
+                missingRequirements: ['Tests'],
+                improvementSuggestions: ['Add unit tests'],
+                recommendations: 'Request modifications.',
+                status: 'COMPLETED',
+              },
+            },
+          },
+        };
+      }
+      return {
+        data: {
+          success: true,
+          data: {
+            answer: 'One milestone is overdue.',
+            highlights: ['ACTIVE'],
+            suggestedNextSteps: ['Review submission'],
+            intent: 'delay_risk',
+            answeredAt: '2026-11-11T00:00:00.000Z',
+          },
+        },
+      };
+    };
 
-    const strongEval = await mockEvaluateSubmission({
-      milestone,
-      submission: {
-        _id: 'sub-2',
-        version: 2,
-        githubUrl: 'https://github.com/example/repo',
-        files: [{ filename: 'screen.png', url: 'https://example.com/screen.png', fileType: 'image' }],
-        notes: 'Implemented all requirements and verified build passes cleanly.',
-      },
-    });
-    assert.equal(strongEval.overallScore, 100);
-    assert.equal(strongEval.missingRequirements.length, 0);
-    assert.equal(getCachedMockEvaluation('ms-test-1')._id, strongEval._id);
-  });
+    try {
+      const empty = await aiService.getMilestoneEvaluation('ms-1');
+      assert.equal(empty.evaluation, null);
+      assert.equal(empty.isMock, false);
 
-  it('answers project assistant queries about delays and PayPal escrow', async () => {
-    const pastDate = new Date(Date.now() - 86400000).toISOString();
-    const reply = await mockAskProjectAssistant({
-      project: { title: 'Test App', status: 'ACTIVE', budget: 100, currency: 'USD' },
-      milestones: [
-        { order: 1, title: 'Setup', status: 'PAID', deadline: pastDate },
-        { order: 2, title: 'API', status: 'IN_PROGRESS', deadline: pastDate },
-      ],
-      payment: { status: 'PARTIALLY_CAPTURED', totalAuthorized: 100, totalCaptured: 40, captures: [{}] },
-      question: 'Which milestones are overdue?',
-    });
+      const evaluated = await aiService.evaluateSubmission({
+        milestone: { _id: 'ms-1' },
+        submission: { _id: 'sub-1' },
+      });
+      assert.equal(evaluated.evaluation.overallScore, 75);
+      assert.equal(evaluated.isMock, false);
 
-    assert.match(reply.answer, /1 milestone\(s\) have passed their deadline/i);
-    assert.ok(reply.highlights.length >= 2);
-    assert.equal(aiService.isMockMode(), true);
+      const reply = await aiService.askProjectAssistant({
+        projectId: 'proj-1',
+        question: 'Which milestones are delayed?',
+      });
+      assert.equal(reply.answer, 'One milestone is overdue.');
+      assert.equal(reply.isMock, false);
+    } finally {
+      axiosClient.get = originalGet;
+      axiosClient.post = originalPost;
+    }
   });
 });
-
