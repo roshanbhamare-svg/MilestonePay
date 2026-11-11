@@ -169,3 +169,4 @@ END
 - **Backend Tests (`MilestonePay/backend` -> `npm test`):** `tests/ai.test.js` covers 12 unit/workflow tests across 7 suites (Zod v4 + `ChatGroq.withStructuredOutput` binding, deterministic budget & deadline reconciliation, GitHub/SSRF/vision inspector, all 3 LangGraph workflows using fake LLM and `fetch` doubles, and `aiController` input/key validation).
 - **Frontend Tests, Lint & Build (`MilestonePay/frontend` -> `npm test`, `npm run lint`, `npm run build`):** `tests/frontend.test.js` covers 5 tests across 2 suites verifying formatters and real `/api/ai/*` `aiService` routing with mock AI disabled, alongside ESLint and Vite production compilation.
 - **Live Runtime Prerequisite:** Executing live Groq inference and end-to-end MongoDB/PayPal flows requires valid `GROQ_API_KEY` and `JWT_SECRET` values in `MilestonePay/backend/.env`.
+

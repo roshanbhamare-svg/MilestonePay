@@ -59,3 +59,4 @@ describe("authController configuration boundaries", () => {
     }
   });
 });
+
