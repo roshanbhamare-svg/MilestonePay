@@ -3,6 +3,11 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    const err = new Error("Server authentication is not configured (missing JWT_SECRET)");
+    err.statusCode = 503;
+    throw err;
+  }
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
@@ -20,6 +25,13 @@ export const register = async (req, res) => {
 
     if (password.length < 6) {
       return res.status(400).json({ success: false, error: "Password must be at least 6 characters" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({
+        success: false,
+        error: "Server authentication is not configured (missing JWT_SECRET)",
+      });
     }
 
     const existingUser = await User.findOne({ email });
@@ -47,7 +59,11 @@ export const register = async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Registration failed" });
+    console.error("[Auth Controller] Registration failed:", err?.message || err);
+    res.status(err?.statusCode || 500).json({
+      success: false,
+      error: err?.statusCode ? err.message : "Registration failed",
+    });
   }
 };
 
@@ -57,6 +73,13 @@ export const login = async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({ success: false, error: "Email and password are required" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({
+        success: false,
+        error: "Server authentication is not configured (missing JWT_SECRET)",
+      });
     }
 
     const user = await User.findOne({ email });
@@ -79,7 +102,11 @@ export const login = async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Login failed" });
+    console.error("[Auth Controller] Login failed:", err?.message || err);
+    res.status(err?.statusCode || 500).json({
+      success: false,
+      error: err?.statusCode ? err.message : "Login failed",
+    });
   }
 };
 

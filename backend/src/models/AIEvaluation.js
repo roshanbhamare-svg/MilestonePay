@@ -24,6 +24,7 @@ const aiEvaluationSchema = new mongoose.Schema(
     criteriaResults: [criteriaResultSchema],
     completedRequirements: [{ type: String }],
     missingRequirements: [{ type: String }],
+    improvementSuggestions: [{ type: String }],
     recommendations: {
       type: String,
       default: "",
@@ -33,6 +34,19 @@ const aiEvaluationSchema = new mongoose.Schema(
       min: 0,
       max: 100,
       default: 0,
+    },
+    analysisMetadata: {
+      githubUrl: { type: String, default: "" },
+      githubAccessible: { type: Boolean, default: false },
+      githubError: { type: String, default: null },
+      repoFilesInspected: [{ type: String }],
+      attachmentsInspected: [
+        {
+          filename: { type: String },
+          fileType: { type: String },
+          inspected: { type: Boolean, default: false },
+        },
+      ],
     },
     status: {
       type: String,

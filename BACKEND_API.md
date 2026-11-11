@@ -44,7 +44,7 @@ User (client | freelancer)
   ├── Project (clientId, freelancerId)
   │     ├── Milestone (projectId, order, paymentAmount)
   │     │     ├── Submission (milestoneId, submittedBy, files, githubUrl)
-  │     │     └── AIEvaluation (milestoneId, submissionId, criteriaResults)
+  │     │     └── AIEvaluation (milestoneId, submissionId, criteriaResults, improvementSuggestions, analysisMetadata, overallScore)
   │     └── Payment (projectId, clientId, authorizationId, captures[])
   └── Notification (userId, type, message, read)
 ```
@@ -237,7 +237,7 @@ Request modifications on milestone (moves status to `CHANGES_REQUESTED`).
 ### Payment Business Logic Endpoints (`/api/payments`)
 
 #### `POST /api/payments/projects/:projectId/authorize` *(Client only)*
-Create a PayPal authorization order for the project budget.
+Create a PayPal authorization order parameterized with `project.budget` and `project.currency`.
 
 #### `POST /api/payments/complete-authorization` *(Client only)*
 Record buyer approval and store the PayPal Authorization ID in MongoDB.
@@ -246,7 +246,7 @@ Record buyer approval and store the PayPal Authorization ID in MongoDB.
 ```
 
 #### `POST /api/payments/milestones/:milestoneId/capture` *(Client only)*
-Captures approved milestone funds from the PayPal authorization. Updates Payment and Milestone records in MongoDB to `PAID`.
+Captures approved milestone funds (`milestone.paymentAmount` in `payment.currency || project.currency`) from the PayPal authorization. Updates Payment and Milestone records in MongoDB to `PAID`.
 
 #### `GET /api/payments/projects/:projectId` *(Protected)*
 Fetch payment and capture history for a project.
@@ -256,16 +256,135 @@ Void unused authorized funds.
 
 ---
 
-### AI Integration Endpoints (`/api/ai`) *(Contract for Member D)*
+### AI Integration Endpoints (`/api/ai`) *(LangGraph.js — Member D)*
 
-#### `POST /api/ai/projects/:projectId/generate-milestones` *(Protected)*
-Input endpoint for LangGraph milestone generator agent.
+> All `/api/ai/*` routes require JWT authentication (`Authorization: Bearer <token>`).  
+> If `GROQ_API_KEY` is missing in `backend/.env`, AI execution endpoints return `503`. Upstream rate limits return `429`, and upstream model errors return `502`.  
+> **Human-in-the-Loop Guarantee:** AI endpoints NEVER approve milestones or capture PayPal funds automatically.
 
-#### `POST /api/ai/milestones/:milestoneId/evaluate` *(Protected)*
-Input endpoint for LangGraph submission evaluation agent.
+#### `POST /api/ai/generate-milestones` *(Client only)*
+Stateless LangGraph milestone breakdown preview from a raw project brief (used during project creation). Always returns `persisted: false`.
+```json
+// Request
+{
+  "title": "AI Analytics SaaS MVP",
+  "description": "Build a React + Node dashboard with Stripe billing and PDF exports.",
+  "budget": 500,
+  "currency": "USD",
+  "deadline": "2026-12-31T00:00:00.000Z"
+}
 
-#### `GET /api/ai/milestones/:milestoneId/evaluation` *(Protected)*
-Fetch AI evaluation report for a milestone.
+// Response (200)
+{
+  "success": true,
+  "data": {
+    "milestones": [
+      {
+        "title": "Architecture & Authentication",
+        "description": "...",
+        "paymentAmount": 125,
+        "deadline": "2026-12-01T00:00:00.000Z",
+        "deliverables": [{ "title": "Auth API", "description": "JWT endpoints" }],
+        "acceptanceCriteria": [{ "criteria": "Passwords hashed with bcrypt", "completed": false }],
+        "order": 1
+      }
+    ],
+    "requirementAnalysis": {
+      "objectives": ["..."],
+      "extractedBudget": 500,
+      "extractedCurrency": "USD",
+      "extractedDeadline": "2026-12-31T00:00:00.000Z",
+      "coreFeatures": ["..."],
+      "technicalDependencies": ["..."],
+      "missingOrAmbiguousRequirements": ["Clarify PDF template branding"],
+      "riskFlags": ["..."]
+    },
+    "tasks": [{ "id": "T1", "title": "...", "complexityWeight": 4, "phase": "foundation", "dependencies": [], "deliverables": ["..."] }],
+    "validation": { "passed": true, "errors": [], "attempts": 1 },
+    "persisted": false
+  }
+}
+```
+
+#### `POST /api/ai/projects/:projectId/generate-milestones` *(Client owner only)*
+Runs the LangGraph milestone generator for an existing project. Persists the generated milestones into MongoDB (`Milestone.insertMany`) unless `"persist": false` is passed. Persistence is restricted to `DRAFT` or `AGREEMENT_PENDING` projects where all existing milestones are still `PENDING`.
+```json
+// Request (optional body overrides)
+{
+  "persist": true,
+  "budget": 500,
+  "currency": "USD"
+}
+
+// Response (200)
+{
+  "success": true,
+  "data": {
+    "projectId": "67b0...",
+    "milestones": [...],
+    "requirementAnalysis": {...},
+    "tasks": [...],
+    "validation": { "passed": true, "errors": [], "attempts": 1 },
+    "persisted": true
+  }
+}
+```
+
+#### `POST /api/ai/milestones/:milestoneId/evaluate` *(Project Client or Freelancer)*
+Runs the LangGraph deliverable evaluation graph against the latest submission (or optional `{ "submissionId": "..." }`). Inspects the GitHub repository via GitHub REST API (supports private repos when `GITHUB_TOKEN` is set), decodes inline/uploaded text artifacts safely, inspects image screenshots with Groq Vision, persists a new `AIEvaluation` record, and creates an `EVALUATION_COMPLETE` notification for the client.
+```json
+// Request (optional)
+{ "submissionId": "67b1..." }
+
+// Response (200)
+{
+  "success": true,
+  "data": {
+    "evaluation": {
+      "_id": "67b2...",
+      "milestoneId": "67b0...",
+      "submissionId": "67b1...",
+      "overallScore": 80,
+      "criteriaResults": [{ "criteria": "...", "met": true, "comments": "..." }],
+      "completedRequirements": ["..."],
+      "missingRequirements": ["..."],
+      "improvementSuggestions": ["..."],
+      "recommendations": "Recommended action: ...",
+      "analysisMetadata": {
+        "githubUrl": "https://github.com/org/repo",
+        "githubAccessible": true,
+        "githubError": null,
+        "repoFilesInspected": ["README.md", "package.json", "src/index.js"],
+        "attachmentsInspected": [{ "filename": "ui.png", "fileType": "image", "inspected": true }]
+      },
+      "status": "COMPLETED"
+    },
+    "verification": { "passed": true, "attempts": 1 }
+  }
+}
+```
+
+#### `GET /api/ai/milestones/:milestoneId/evaluation` *(Project Client or Freelancer)*
+Fetch the latest persisted `AIEvaluation` report for a milestone.
+
+#### `POST /api/ai/projects/:projectId/assistant` *(Project Client or Freelancer)*
+Runs the context-aware LangGraph Project Assistant grounded in MongoDB project state, milestones, submissions, AI evaluations, and PayPal payment metrics. Routes questions conditionally through `disputeFocus`, `riskAndEscrowFocus`, or `progressAndRequirementsFocus`.
+```json
+// Request
+{ "question": "Is there enough remaining PayPal escrow for Milestone 3?" }
+
+// Response (200)
+{
+  "success": true,
+  "data": {
+    "answer": "...",
+    "highlights": ["Remaining escrow: $350.00 USD"],
+    "suggestedNextSteps": ["..."],
+    "intent": "payment_escrow",
+    "answeredAt": "2026-11-11T18:30:00.000Z"
+  }
+}
+```
 
 ---
 

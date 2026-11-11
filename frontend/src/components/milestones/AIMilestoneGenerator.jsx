@@ -20,6 +20,7 @@ export default function AIMilestoneGenerator({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [isMockResult, setIsMockResult] = useState(aiService.isMockMode());
+  const [requirementAnalysis, setRequirementAnalysis] = useState(null);
 
   const numericBudget = Number(budget) || 0;
   const allocated = milestones.reduce((sum, m) => sum + (Number(m.paymentAmount) || 0), 0);
@@ -42,8 +43,10 @@ export default function AIMilestoneGenerator({
         budget: numericBudget,
         currency,
         deadline,
+        persist: false,
       });
       setIsMockResult(result.isMock);
+      setRequirementAnalysis(result.requirementAnalysis || null);
       onChange(result.milestones);
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to generate milestones'));
@@ -119,6 +122,16 @@ export default function AIMilestoneGenerator({
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
+
+      {requirementAnalysis?.missingOrAmbiguousRequirements?.length > 0 && (
+        <Alert variant="info" title="AI Requirement Analysis — Clarifications Suggested">
+          <ul style={{ margin: '4px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+            {requirementAnalysis.missingOrAmbiguousRequirements.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
 
       {milestones.length > 0 && (
         <>
