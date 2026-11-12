@@ -27,7 +27,7 @@ import {
 } from '@paypal/react-paypal-js/sdk-v6';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5001').replace(/\/+$/, '');
 const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -155,8 +155,8 @@ export async function createOrder(
               experienceContext: {
                 // Prevents instant redirect; JS SDK handles approval UI
                 userAction: 'PAY_NOW',
-                returnUrl: `${process.env.CLIENT_URL || 'http://localhost:5173'}/payment/success`,
-                cancelUrl: `${process.env.CLIENT_URL || 'http://localhost:5173'}/payment/cancel`,
+                returnUrl: `${(process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/+$/, '')}/payment/success`,
+                cancelUrl: `${(process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/+$/, '')}/payment/cancel`,
               },
             },
           },
