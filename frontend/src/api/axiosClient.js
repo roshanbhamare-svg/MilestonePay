@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:5001';
+export const API_BASE_URL = (import.meta.env?.VITE_API_URL || 'http://localhost:5001').replace(/\/+$/, '');
 export const TOKEN_STORAGE_KEY = 'milestonepay_token';
 
 let unauthorizedHandler = null;
@@ -14,7 +14,7 @@ const axiosClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 45000,
 });
 
 axiosClient.interceptors.request.use(

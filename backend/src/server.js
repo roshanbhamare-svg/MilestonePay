@@ -26,7 +26,14 @@ dotenv.config();
 
 const app = express();
 
+// Trust first reverse proxy (Render, Railway, etc.) so rate limiting & client IPs resolve accurately
+app.set("trust proxy", 1);
+
 const PORT = process.env.PORT || 5001;
+
+function normalizeOrigin(origin) {
+  return String(origin || "").trim().replace(/\/+$/, "");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security Middleware
@@ -39,24 +46,32 @@ app.use(
   })
 );
 
-const allowedOrigins = [
+const configuredOrigins = [
   process.env.CLIENT_URL,
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : []),
+]
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...configuredOrigins,
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
   "http://127.0.0.1:5175",
-].filter(Boolean);
+];
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
+      const normalized = normalizeOrigin(origin);
       if (
-        allowedOrigins.includes(origin) ||
-        /^http:\/\/(localhost|127\.0\.0\.1):(517\d|3000)$/.test(origin)
+        allowedOrigins.includes(normalized) ||
+        /^http:\/\/(localhost|127\.0\.0\.1):(517\d|3000)$/.test(normalized)
       ) {
         return callback(null, true);
       }
@@ -136,6 +151,14 @@ app.use(morgan("dev"));
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check API
 // ─────────────────────────────────────────────────────────────────────────────
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "MilestonePay API",
+    health: "/api/health",
+  });
+});
 
 app.get("/api/health", (req, res) => {
   const mongoState = mongoose.connection.readyState;
